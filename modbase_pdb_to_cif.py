@@ -243,8 +243,8 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
         with self.loop(
                 "pdbx_poly_seq_scheme",
                 ["asym_id", "entity_id", "seq_id", "mon_id", "ndb_seq_num",
-                "pdb_seq_num", "auth_seq_num", "pdb_mon_id", "auth_mon_id",
-                "pdb_strand_id", "pdb_ins_code", "hetero"]) as lp:
+                 "pdb_seq_num", "auth_seq_num", "pdb_mon_id", "auth_mon_id",
+                 "pdb_strand_id", "pdb_ins_code", "hetero"]) as lp:
             for i, s in enumerate(sequence3):
                 lp.write("%s %d %d %s %d %d %d %s %s %s %s n" %
                          (chain_id, entity_id, i+1, s, i+1, auth_seq_ids[i],
