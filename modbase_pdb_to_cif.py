@@ -13,7 +13,8 @@ three_to_one = {
         'PHE': 'F', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
         'LYS': 'K', 'LEU': 'L', 'MET': 'M', 'ASN': 'N',
         'PRO': 'P', 'GLN': 'Q', 'ARG': 'R', 'SER': 'S',
-        'THR': 'T', 'VAL': 'V', 'TRP': 'W', 'TYR': 'Y'
+        'THR': 'T', 'VAL': 'V', 'TRP': 'W', 'TYR': 'Y',
+        'UNK': 'X'
 }
 
 one_to_three = {val: key for key, val in three_to_one.items()}
@@ -218,12 +219,13 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
             if self.align:
                 p = self.align.template.primary
                 for i, s in enumerate(p):
-                    lp.write("%d %d %s ."
+                    lp.write("%d %d %s n"
                              % (self.template.entity_id, i+1, one_to_three[s]))
             for i, s in enumerate(sequence3):
-                lp.write("%d %d %s ." % (self.target.entity_id, i+1, s))
+                lp.write("%d %d %s n" % (self.target.entity_id, i+1, s))
 
-    def write_template_details(self, chain_id, pdb_beg, pdb_end, pdb_code):
+    def write_template_details(self, chain_id, pdb_beg, pdb_end,
+                               pdb_ins_code_beg, pdb_ins_code_end, pdb_code):
         if not self.align:
             return
         # Define the identity transformation (id=1)
@@ -261,8 +263,11 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
             with self.loop(
                     "ma_template_poly_segment",
                     ["id", "template_id", "residue_number_begin",
-                     "residue_number_end"]) as lp:
-                lp.write("1 1 %d %d" % (pdb_beg, pdb_end))
+                     "residue_number_end",
+                     "pdbx_residue_begin_PDB_insertion_code",
+                     "pdbx_residue_end_PDB_insertion_code"]) as lp:
+                lp.write("1 1 %d %d %s %s" %
+                         (pdb_beg, pdb_end, pdb_ins_code_beg, pdb_ins_code_end))
 
         with self.loop(
                 "ma_template_ref_db_details",
@@ -499,6 +504,14 @@ class Structure:
                 yield a[17:20].strip()  # residue name
                 resnum = this_resnum
 
+    def get_residue_label_parts(self, label):
+        """Split up a residue identifier into its number and insertion code
+        if present (e.g., for '100P', return 100 and 'P')."""
+        parts = re.findall('([-]?\d+|\D+)', label)
+        num = int(parts[0])
+        ins_code = str(parts[1]) if len(parts) > 1 else '?'
+        return num, ins_code
+
     def write_mmcif(self, fh, align):
         """Write current structure out to a mmCIF file handle"""
         # mmCIF models must always have a chain ID; older ModBase PDB models
@@ -506,6 +519,13 @@ class Structure:
         chain_id = self.chain_id or 'A'
         sequence3 = list(self.get_sequence3())
         modeller_version = self.get_modeller_version() or '?'
+
+        template_beg_num, template_beg_ins_code = self.get_residue_label_parts(
+            self.remarks['TEMPLATE BEGIN'])
+
+        template_end_num, template_end_ins_code = self.get_residue_label_parts(
+            self.remarks['TEMPLATE END'])
+
         if align:
             align = Alignment(align)
 
@@ -518,8 +538,9 @@ class Structure:
         c.write_chem_comp()
         c.write_entity_details(sequence3)
         c.write_template_details(
-            chain_id, int(self.remarks['TEMPLATE BEGIN']),
-            int(self.remarks['TEMPLATE END']), self.remarks['TEMPLATE PDB'])
+            chain_id, template_beg_num, template_end_num,
+            template_beg_ins_code, template_end_ins_code,
+            self.remarks['TEMPLATE PDB'])
         c.write_target_details(chain_id, sequence3)
         c.write_alignment(chain_id, self.remarks['EVALUE'])
         c.write_assembly(chain_id, sequence3)
@@ -527,8 +548,10 @@ class Structure:
         c.write_protocol()
         c.write_scores(
             self.remarks.get('TSVMOD METHOD'), self.remarks.get('TSVMOD RMSD'),
-            self.remarks.get('TSVMOD NO35'), self.remarks.get('GA341 SCORE'),
-            self.remarks.get('zDOPE SCORE'), self.remarks.get('MPQS'))
+            self.remarks.get('TSVMOD NO35'),
+            self.remarks.get('GA341 SCORE', self.remarks.get('MODEL SCORE')),
+            self.remarks.get('zDOPE SCORE', self.remarks.get('ZDOPE SCORE')),
+            self.remarks.get('MPQS', self.remarks.get('MODPIPE QUALITY SCORE')))
         c.write_model_list()
         c.write_asym(chain_id)
         c.write_atom_site(
