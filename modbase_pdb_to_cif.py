@@ -224,6 +224,33 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
             for i, s in enumerate(sequence3):
                 lp.write("%d %d %s n" % (self.target.entity_id, i+1, s))
 
+    def write_pdbx_poly_seq_scheme(self, sequence3, chain_id, atoms,
+                                   resnum_begin, resnum_end):
+        auth_seq_ids = list(range(resnum_begin, resnum_end+1))
+        entity_id = self.target.entity_id
+        pdb_resnum = None
+        pdb_inscode = None
+        res_ins_codes = []
+        for a in atoms:
+            # Detect new residue if PDB resnum changed
+            pdb_this_resnum = a[22:26]
+            pdb_this_inscode = a[26:27].strip() or '.'
+            if pdb_this_resnum != pdb_resnum or pdb_this_inscode != pdb_inscode:
+                res_ins_codes.append(pdb_this_inscode)
+            pdb_resnum = pdb_this_resnum
+            pdb_inscode = pdb_this_inscode
+
+        with self.loop(
+                "pdbx_poly_seq_scheme",
+                ["asym_id", "entity_id", "seq_id", "mon_id", "ndb_seq_num",
+                "pdb_seq_num", "auth_seq_num", "pdb_mon_id", "auth_mon_id",
+                "pdb_strand_id", "pdb_ins_code", "hetero"]) as lp:
+            for i, s in enumerate(sequence3):
+                lp.write("%s %d %d %s %d %d %d %s %s %s %s n" %
+                         (chain_id, entity_id, i+1, s, i+1, auth_seq_ids[i],
+                          auth_seq_ids[i], s, s, chain_id,
+                          res_ins_codes[i]))
+
     def write_template_details(self, chain_id, pdb_beg, pdb_end,
                                pdb_ins_code_beg, pdb_ins_code_end, pdb_code):
         if not self.align:
@@ -264,8 +291,8 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
                     "ma_template_poly_segment",
                     ["id", "template_id", "residue_number_begin",
                      "residue_number_end",
-                     "pdbx_residue_begin_PDB_insertion_code",
-                     "pdbx_residue_end_PDB_insertion_code"]) as lp:
+                     "rcsb_residue_begin_PDB_insertion_code",
+                     "rcsb_residue_end_PDB_insertion_code"]) as lp:
                 lp.write("1 1 %d %d %s %s" %
                          (pdb_beg, pdb_end, pdb_ins_code_beg, pdb_ins_code_end))
 
@@ -537,6 +564,9 @@ class Structure:
         c.write_software(self.modpipe_version, modeller_version)
         c.write_chem_comp()
         c.write_entity_details(sequence3)
+        c.write_pdbx_poly_seq_scheme(
+            sequence3, chain_id, self.atoms, int(self.remarks['TARGET BEGIN']),
+            int(self.remarks['TARGET END']))
         c.write_template_details(
             chain_id, template_beg_num, template_end_num,
             template_beg_ins_code, template_end_ins_code,
