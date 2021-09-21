@@ -1,5 +1,10 @@
 #!/usr/bin/python3
 
+"""
+TODO:
+- Add additional metadata to models to indicate NCBI IDs (e.g., https://www.ncbi.nlm.nih.gov/protein/NP_001030614.1)
+    - And one step further, retreive any needed or desired metadata from NCBI
+"""
 import re
 import collections
 
@@ -484,7 +489,7 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
                 ordinal += 1
         assert auth_seqid == resnum_end
 
-        with CifLoop(fh, 'atom_type', ['symbol']) as lp:
+        with self.loop('atom_type', ['symbol']) as lp:
             for element in sorted(elements):
                 lp.write(element)
 
