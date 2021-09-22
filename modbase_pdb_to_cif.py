@@ -473,10 +473,13 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
                 pdb_resnum = pdb_this_resnum
                 inscode = a[26:27].strip() or '?'
                 group_pdb = a[:6]
-                element = a[76:78].strip() or '?'
-                elements.add(element)
                 atmnam = a[12:16]
                 resnam = a[17:20]
+                element = a[76:78].strip()
+                # Handles case of older ModBase PDB models in which this field was absent
+                if not element.isalpha():
+                    element = atmnam.strip()[0] or '?'
+                elements.add(element)
                 x = a[30:38]
                 y = a[38:46]
                 z = a[46:54]
@@ -519,7 +522,7 @@ class Structure:
                 self.atoms.append(line)
         # All ModBase models are single chain
         if self.atoms:
-            self.chain_id = self.atoms[0][21]
+            self.chain_id = self.atoms[0][21].strip()
 
     def get_modeller_version(self):
         if self.expdta:
