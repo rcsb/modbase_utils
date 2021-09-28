@@ -1,12 +1,8 @@
 #!/usr/bin/python3
 
-"""
-TODO:
-- Add additional metadata to models to indicate NCBI IDs (e.g., https://www.ncbi.nlm.nih.gov/protein/NP_001030614.1)
-    - And one step further, retreive any needed or desired metadata from NCBI
-"""
 import re
 import collections
+import datetime
 
 # Single sequence in a Modeller alignment
 Sequence = collections.namedtuple(
@@ -446,6 +442,56 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
             lp.write("1 1 1 'Selected model' . 1 %d 'Homology model'"
                      % self.coord.data_id)
 
+    def write_target_ref_db_details(self, header, target_begin, target_end, organism_name):
+        assert header.startswith('ModPipe Model of')  # For processing bulk model downloads
+        model_seq_db_id = ' '.join(header.split()[3:-1])
+
+        if model_seq_db_id.startswith('UP ') and 8 < len(model_seq_db_id) < 14:
+            unp_id = model_seq_db_id[3:]
+            self.print("#\n_ma_target_ref_db_details.db_name UNP")
+            self.print("_ma_target_ref_db_details.accession %s" % unp_id)
+            self.print("_ma_target_ref_db_details.code %s" % unp_id)  # To be consitent with AF this should be the "ID" value mapped from the "ACC+ID" UniProt ID (or "LOCUS" on NCBI)
+        elif model_seq_db_id.startswith('GENSCAN'):
+            self.print("#\n_ma_target_ref_db_details.db_name GENSCAN")
+            self.print("_ma_target_ref_db_details.accession %s" % model_seq_db_id)  # Change this to the NCBI ID via MMseqs2 later
+            self.print("_ma_target_ref_db_details.code %s" % model_seq_db_id)  # And change this accordingly
+        elif model_seq_db_id.startswith('ENSP'):
+            self.print("#\n_ma_target_ref_db_details.db_name Ensembl")
+            self.print("_ma_target_ref_db_details.accession %s" % model_seq_db_id)  # Change this to the NCBI ID via MMseqs2 later
+            self.print("_ma_target_ref_db_details.code %s" % model_seq_db_id)  # And change this accordingly
+        else:  # Assume ID is NCBI (Genbank)
+            self.print("#\n_ma_target_ref_db_details.db_name GB")
+            self.print("_ma_target_ref_db_details.accession %s" % model_seq_db_id)
+            self.print("_ma_target_ref_db_details.code %s" % model_seq_db_id)  # This is the same as accession ID for NCBI entries
+
+        if organism_name:
+            self.print("_ma_target_ref_db_details.organism_scientific %s" % organism_name)
+
+        self.print("_ma_target_ref_db_details.seq_db_align_begin %d" % target_begin)
+        self.print("_ma_target_ref_db_details.seq_db_align_end %d" % target_end)
+        self.print("_ma_target_ref_db_details.target_entity_id %d" % self.target.entity_id)
+
+    def write_pdbx_audit_revision_details(self):
+        self.print('#\n_pdbx_audit_revision_details.data_content_type "Structure model"')
+        self.print('_pdbx_audit_revision_details.description ?')
+        self.print('_pdbx_audit_revision_details.ordinal 1')
+        self.print('_pdbx_audit_revision_details.provider repository')
+        self.print('_pdbx_audit_revision_details.revision_ordinal 1')
+        self.print('_pdbx_audit_revision_details.type "Initial release"')
+
+    def write_pdbx_audit_revision_history(self, internal_version, moddate):
+        self.print('#\n_pdbx_audit_revision_history.data_content_type "Structure model"')
+        self.print('_pdbx_audit_revision_history.major_revision %d' % 1)
+        self.print('_pdbx_audit_revision_history.minor_revision %d' % 1)
+        self.print('_pdbx_audit_revision_history.internal_version %d' % internal_version)
+        self.print('_pdbx_audit_revision_history.ordinal 1')
+        self.print('_pdbx_audit_revision_history.revision_date %s' % moddate)
+
+    def write_pdbx_database_status(self, todays_date):
+        self.print('#\n_pdbx_database_status.entry_id %s' % self.target.entity_id)
+        self.print('_pdbx_database_status.recvd_initial_deposition_date %s' % todays_date)
+        self.print('_pdbx_database_status.status_code %s' % "REL")
+
     def write_asym(self, chain_id):
         with self.loop('struct_asym', ['id', 'entity_id', 'details']) as lp:
             lp.write("%s %d ?" % (chain_id, self.target.entity_id))
@@ -500,12 +546,27 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
 class Structure:
     """Handle read of PDB structure and write of mmCIF"""
 
-    def _read_pdb(self, fh):
+    def _read_pdb(self, fh, organism_name=None, moddate=None):
         self.remarks = {}
         self.expdta = None
         self.title = None
         self.modpipe_version = None
         self.atoms = []
+        if organism_name:
+            self.organism_name = organism_name
+        else:
+            self.organism_name = '?'   
+        self.todays_date = datetime.datetime.today().strftime("%Y-%m-%d")
+        if moddate:
+            self.moddate = datetime.datetime.fromisoformat(moddate).strftime("%Y-%m-%d")
+        else:
+            self.moddate = '?'
+        model_filename_base = fh.name.split('.pdb')[0]
+        version_search = re.search('_([1-9]{1,2})$', model_filename_base)
+        if version_search:
+            self.internal_version = int(version_search.group(1))
+        else:
+            self.internal_version = 1
 
         for line in fh:
             # Handle standard ModBase headers
@@ -514,6 +575,8 @@ class Structure:
                 self.remarks[key] = val
             elif line.startswith('REMARK   6 GENERATED BY MODPIPE VERSION '):
                 self.modpipe_version = line[40:].strip()
+            elif line.startswith('HEADER    '):
+                self.header = line[10:].strip()
             elif line.startswith('TITLE     '):
                 self.title = line[10:].strip()
             elif line.startswith('EXPDTA    '):
@@ -591,16 +654,22 @@ class Structure:
             self.remarks.get('zDOPE SCORE', self.remarks.get('ZDOPE SCORE')),
             self.remarks.get('MPQS', self.remarks.get('MODPIPE QUALITY SCORE')))
         c.write_model_list()
+        c.write_target_ref_db_details(
+            self.header, int(self.remarks['TARGET BEGIN']),
+            int(self.remarks['TARGET END']), self.organism_name)
+        c.write_pdbx_audit_revision_details()
+        c.write_pdbx_audit_revision_history(self.internal_version, self.moddate)
+        c.write_pdbx_database_status(self.todays_date)
         c.write_asym(chain_id)
         c.write_atom_site(
             chain_id, self.atoms, int(self.remarks['TARGET BEGIN']),
             int(self.remarks['TARGET END']))
 
 
-def read_pdb(fh):
+def read_pdb(fh, organism_name=None, moddate=None):
     """Read PDB file from filehandle and return a new Structure"""
     s = Structure()
-    s._read_pdb(fh)
+    s._read_pdb(fh, organism_name=organism_name, moddate=moddate)
     return s
 
 
