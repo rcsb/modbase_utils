@@ -409,10 +409,10 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
         with self.loop(
                 'ma_qa_metric',
                 ['id', 'name', 'description', 'type', 'mode',
-                 'other_details', 'software_group_id']) as lp:
+                 'type_other_details', 'software_group_id']) as lp:
             # ModPipe is software_id=1
             lp.write(
-                "1 MPQS 'ModPipe Quality Score' other global\n"
+                "1 MPQS 'ModPipe Quality Score' other global "
                 "'composite score, values >1.1 are considered reliable' 1")
 
             # MODELLER is software_id=2
@@ -482,7 +482,7 @@ VAL 'L-peptide linking' VALINE 'C5 H11 N O2' 117.148""")
     def write_pdbx_audit_revision_history(self, internal_version, moddate):
         self.print('#\n_pdbx_audit_revision_history.data_content_type "Structure model"')
         self.print('_pdbx_audit_revision_history.major_revision %d' % 1)
-        self.print('_pdbx_audit_revision_history.minor_revision %d' % 1)
+        self.print('_pdbx_audit_revision_history.minor_revision %d' % 0)
         self.print('_pdbx_audit_revision_history.internal_version %d' % internal_version)
         self.print('_pdbx_audit_revision_history.ordinal 1')
         self.print('_pdbx_audit_revision_history.revision_date %s' % moddate)
@@ -673,6 +673,13 @@ def read_pdb(fh, organism_name=None, moddate=None):
     return s
 
 
+def modbase_pdb_to_cif_main(args):
+    with open(args.pdb) as fh:
+        s = read_pdb(fh)
+    with open(args.mmcif, 'w') as fh:
+        s.write_mmcif(fh, args.align)
+
+
 if __name__ == '__main__':
     import argparse
     a = argparse.ArgumentParser(
@@ -690,7 +697,4 @@ ModBase).
     a.add_argument("mmcif", help="Output mmCIF file")
     args = a.parse_args()
 
-    with open(args.pdb) as fh:
-        s = read_pdb(fh)
-    with open(args.mmcif, 'w') as fh:
-        s.write_mmcif(fh, args.align)
+    modbase_pdb_to_cif_main(args)
